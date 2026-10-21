@@ -6,23 +6,18 @@ app = Flask(__name__)
 
 KEYS_FILE = "keys_database.json"
 
-# دالة لقراءة المفاتيح من قاعدة البيانات
 def load_keys():
     if not os.path.exists(KEYS_FILE):
-        # مفاتيح تجريبية أولية
-        initial_keys = {
-            "WEEK-0001-PRO-KEY": {"used": False, "duration_days": 7},
-            "WEEK-0002-PRO-KEY": {"used": False, "duration_days": 30}
-        }
-        save_keys(initial_keys)
-        return initial_keys
-    with open(KEYS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        return {}
+    try:
+        with open(KEYS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
 
-# دالة لحفظ المفاتيح في قاعدة البيانات
 def save_keys(keys_data):
     with open(KEYS_FILE, "w", encoding="utf-8") as f:
-        json.dump(keys_data, f, indent=4)
+        json.dump(keys_data, f, indent=4, ensure_ascii=False)
 
 @app.route('/verify_key', methods=['POST'])
 def verify_key():
@@ -37,20 +32,18 @@ def verify_key():
 
     key_info = keys[user_key]
 
-    # التحقق مما إذا كان المفتاح قد استُخدم من قبل
-    if key_info["used"]:
-        return jsonify({"success": False, "message": "عذراً، هذا المفتاح مستخدم من قبل وتم حرق وإلغاء صلاحيته!"})
+    # التحقق مما إذا كان المفتاح مربوطاً بجهاز مسبقاً وتم استخدامه
+    if key_info.get("device_id") is not None:
+        if key_info.get("device_id") != device_id:
+            return jsonify({"success": False, "message": "هذا المفتاح مستخدم على جهاز آخر مسبقاً!"})
+        else:
+            return jsonify({"success": True, "message": "تم التحقق مسبقاً لهذا الجهاز.", "duration_days": 7})
 
-    # استخدام المفتاح لمرة واحدة وتحديث حالته في السحابة
-    key_info["used"] = True
+    # ربط المفتاح بالجهاز الحالي وحرقه لئلا يُستخدم مجدداً
     key_info["device_id"] = device_id
     save_keys(keys)
 
-    return jsonify({
-        "success": True, 
-        "duration_days": key_info["duration_days"],
-        "message": "تم التفعيل بنجاح وتم قفل المفتاح نهائياً!"
-    })
+    return jsonify({"success": True, "message": "تم التفعيل بنجاح!", "duration_days": 7})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
