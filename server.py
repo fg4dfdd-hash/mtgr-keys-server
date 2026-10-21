@@ -12,16 +12,23 @@ def load_keys():
     try:
         with open(KEYS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception as e:
+        print(f"Error loading keys: {e}")
         return {}
 
 def save_keys(keys_data):
-    with open(KEYS_FILE, "w", encoding="utf-8") as f:
-        json.dump(keys_data, f, indent=4, ensure_ascii=False)
+    try:
+        with open(KEYS_FILE, "w", encoding="utf-8") as f:
+            json.dump(keys_data, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error saving keys: {e}")
 
 @app.route('/verify_key', methods=['POST'])
 def verify_key():
     data = request.json
+    if not data:
+        return jsonify({"success": False, "message": "بيانات غير صالحة!"})
+        
     user_key = data.get("key")
     device_id = data.get("device_id")
 
@@ -32,14 +39,15 @@ def verify_key():
 
     key_info = keys[user_key]
 
-    # التحقق مما إذا كان المفتاح مربوطاً بجهاز مسبقاً وتم استخدامه
-    if key_info.get("device_id") is not None:
-        if key_info.get("device_id") != device_id:
+    # التحقق مما إذا كان المفتاح مسجلاً على جهاز آخر مسبقاً
+    registered_device = key_info.get("device_id")
+    if registered_device is not None:
+        if registered_device != device_id:
             return jsonify({"success": False, "message": "هذا المفتاح مستخدم على جهاز آخر مسبقاً!"})
         else:
             return jsonify({"success": True, "message": "تم التحقق مسبقاً لهذا الجهاز.", "duration_days": 7})
 
-    # ربط المفتاح بالجهاز الحالي وحرقه لئلا يُستخدم مجدداً
+    # ربط المفتاح بالجهاز الحالي وتثبيته
     key_info["device_id"] = device_id
     save_keys(keys)
 
