@@ -41,38 +41,50 @@ def verify_key():
 
         key_info = keys[user_key]
         registered_device = key_info.get("device_id")
+        expires_str = key_info.get("expires")
 
-        # إذا كان المفتاح مستخدماً مسبقاً على جهاز آخر
-        if registered_device is not None:
-            if registered_device != device_id:
-                return jsonify({"success": False, "message": "هذا المفتاح مستخدم ومقفل على جهاز آخر مسبقاً!"})
+        # 1. إذا كان المفتاح مستخدماً مسبقاً على جهاز آخَر (محظور تماماً)
+        if registered_device is not None and registered_device != device_id:
+            return jsonify({"success": False, "message": "هذا المفتاح مستخدم ومقفل على جهاز آخر مسبقاً!"})
+
+        # 2. إذا كان المفتاح مستخدماً مسبقاً على نفس الجهاز أو يتم تفعيله لأول مرة
+        now = datetime.datetime.now()
+
+        if registered_device == device_id and expires_str:
+            # المفتاح مسجل مسبقاً على نفس الجهاز، نتحقق هل انتهى وقته الثابت أم لا؟
+            expires_time = datetime.datetime.strptime(expires_str, "%Y-%m-%d %H:%M:%S")
+            if now < expires_time:
+                # حساب الساعات المتبقية الفعلية بدقة وثبات
+                remaining_seconds = int((expires_time - now).total_seconds())
+                return jsonify({
+                    "success": True, 
+                    "message": "تم التحقق من الجهاز مسبقاً.", 
+                    "remaining_seconds": remaining_seconds,
+                    "expires": expires_str
+                })
             else:
-                # إذا كان مستخدماً مسبقاً على نفس الجهاز، نتحقق من صلاحيته
-                expires_str = key_info.get("expires")
-                if expires_str:
-                    expires_time = datetime.datetime.strptime(expires_str, "%Y-%m-%d %H:%M:%S")
-                    if datetime.datetime.now() < expires_time:
-                        return jsonify({"success": True, "message": "تم التحقق مسبقاً لهذا الجهاز.", "duration_days": key_info.get("duration_days", 7)})
                 return jsonify({"success": False, "message": "انتهت صلاحية هذا المفتاح!"})
 
-        # حرق المفتاح لأول مرة وربطه بالجهاز وحساب وقت الانتهاء بدقة
+        # 3. تفعيل لأول مرة (حرق المفتاح وربطه نهائياً بالجهاز وتثبيت وقت الانتهاء)
         duration_days = key_info.get("duration_days", 7)
-        expires_time = datetime.datetime.now() + datetime.timedelta(days=duration_days)
+        expires_time = now + datetime.timedelta(days=duration_days)
+        expires_formatted = expires_time.strftime("%Y-%m-%d %H:%M:%S")
         
+        # حفظ البيانات في السيرفر
         key_info["device_id"] = device_id
-        key_info["expires"] = expires_time.strftime("%Y-%m-%d %H:%M:%S")
-        
+        key_info["expires"] = expires_formatted
         save_keys(keys)
 
-        return jsonify({"success": True, "message": "تم التفعيل بنجاح وحرق المفتاح!", "duration_days": duration_days})
+        remaining_seconds = int((expires_time - now).total_seconds())
+        return jsonify({
+            "success": True, 
+            "message": "تم التفعيل بنجاح وحرق المفتاح!", 
+            "remaining_seconds": remaining_seconds,
+            "expires": expires_formatted
+        })
     
     except Exception as e:
         return jsonify({"success": False, "message": f"خطأ في السيرفر: {str(e)}"})
-
-@app.route('/check_keys', methods=['GET'])
-def check_keys():
-    keys = load_keys()
-    return jsonify({"total_keys": len(keys), "keys_database": keys})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
