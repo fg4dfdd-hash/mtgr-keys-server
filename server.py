@@ -24,6 +24,14 @@ def save_keys(keys_data):
     except Exception as e:
         print(f"Error saving keys: {e}")
 
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({"status": "Server is running successfully!", "brand": "mtgr_als3adh"})
+
+@app.route('/debug_keys', methods=['GET'])
+def debug_keys():
+    return jsonify(load_keys())
+
 @app.route('/verify_key', methods=['POST'])
 def verify_key():
     try:
@@ -43,43 +51,33 @@ def verify_key():
         registered_device = key_info.get("device_id")
         expires_str = key_info.get("expires")
 
-        # 1. إذا كان المفتاح مستخدماً مسبقاً على جهاز آخَر (محظور تماماً)
         if registered_device is not None and registered_device != device_id:
             return jsonify({"success": False, "message": "هذا المفتاح مستخدم ومقفل على جهاز آخر مسبقاً!"})
 
-        # 2. إذا كان المفتاح مستخدماً مسبقاً على نفس الجهاز أو يتم تفعيله لأول مرة
         now = datetime.datetime.now()
 
         if registered_device == device_id and expires_str:
-            # المفتاح مسجل مسبقاً على نفس الجهاز، نتحقق هل انتهى وقته الثابت أم لا؟
             expires_time = datetime.datetime.strptime(expires_str, "%Y-%m-%d %H:%M:%S")
             if now < expires_time:
-                # حساب الساعات المتبقية الفعلية بدقة وثبات
-                remaining_seconds = int((expires_time - now).total_seconds())
                 return jsonify({
                     "success": True, 
                     "message": "تم التحقق من الجهاز مسبقاً.", 
-                    "remaining_seconds": remaining_seconds,
                     "expires": expires_str
                 })
             else:
                 return jsonify({"success": False, "message": "انتهت صلاحية هذا المفتاح!"})
 
-        # 3. تفعيل لأول مرة (حرق المفتاح وربطه نهائياً بالجهاز وتثبيت وقت الانتهاء)
         duration_days = key_info.get("duration_days", 7)
         expires_time = now + datetime.timedelta(days=duration_days)
         expires_formatted = expires_time.strftime("%Y-%m-%d %H:%M:%S")
         
-        # حفظ البيانات في السيرفر
         key_info["device_id"] = device_id
         key_info["expires"] = expires_formatted
         save_keys(keys)
 
-        remaining_seconds = int((expires_time - now).total_seconds())
         return jsonify({
             "success": True, 
             "message": "تم التفعيل بنجاح وحرق المفتاح!", 
-            "remaining_seconds": remaining_seconds,
             "expires": expires_formatted
         })
     
